@@ -1,0 +1,56 @@
+server:
+  port: 8080
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+spring:
+  # 数据库配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/underwater_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 12345
+  # Redis配置
+  redis:
+    host: localhost
+    port: 6379
+    password:
+    database: 0
+  # 邮箱配置（QQ邮箱示例）
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2820328090@qq.com
+    password: pkovhcniuzwwdcci
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          timeout: 5000
+
+# MyBatis配置
+mybatis:
+  type-aliases-package: com.underwater.entity
+  configuration:
+    map-underscore-to-camel-case: true  # 下划线转驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 自定义配置
+custom:
+  # JWT
+  jwt:
+    secret: underwater-2025-jdk21-secret-key
+    expire: 86400000
+  # 验证码
+  code:
+    expire-minutes: 15
+    length: 6
+  # 图片存储
+  image:
+    upload-path: ./uploads/
+    base-url: http://localhost:8080/uploads/

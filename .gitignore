@@ -1,0 +1,49 @@
+# IDE配置文件（IDEA/Eclipse）
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.project
+.classpath
+.factorypath
+.apt_generated
+.buildpath
+target/
+bin/
+
+# Maven/Gradle
+.mvn/
+gradle/
+gradlew
+gradlew.bat
+*.jar
+*.war
+*.zip
+*.tar.gz
+*.rar
+
+# 日志文件
+logs/
+*.log
+logs/
+temp/
+
+# 数据库文件
+*.sql
+*.db
+data/
+
+# 操作系统临时文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 自定义上传目录（如果配置了固定上传路径，添加此处）
+upload/
+uploads/
+
+# 配置文件（若有敏感信息，如application.yml中的邮箱授权码，建议排除）
+# application.yml
+# 注意：如果要提交配置文件，需先删除敏感信息！
