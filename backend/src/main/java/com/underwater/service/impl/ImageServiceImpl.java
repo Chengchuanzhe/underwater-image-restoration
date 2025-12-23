@@ -4,8 +4,10 @@ import com.underwater.entity.ImageRecord;
 import com.underwater.mapper.ImageRecordMapper;
 import com.underwater.service.ImageService;
 import org.opencv.core.Core;
+import org.opencv.core.Scalar;
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
+import org.opencv.imgproc.CLAHE; // 新增
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import org.springframework.beans.factory.annotation.Value;
@@ -68,37 +70,100 @@ public class ImageServiceImpl implements ImageService {
             throw new RuntimeException("图片不存在或无操作权限");
         }
 
-        // 2. OpenCV图片修复（去模糊+增强+锐化）
+        // 2. 读取原图
         Mat src = Imgcodecs.imread(record.getOriginalFilePath());
+        if (src.empty()) {
+            throw new RuntimeException("无法读取原始图片文件");
+        }
+
         Mat dst = new Mat();
 
-        // 2.1 双边滤波去模糊
-        Imgproc.bilateralFilter(src, dst, 9, 75, 75);
-        // 2.2 直方图均衡化增强对比度
-        Mat ycrcb = new Mat();
-        Imgproc.cvtColor(dst, ycrcb, Imgproc.COLOR_BGR2YCrCb); // 转YCrCb颜色空间
-        List<Mat> channels = new ArrayList<>(); // 用List<Mat>替代Mat[]，匹配OpenCV API参数要求
-        Core.split(ycrcb, channels); // 拆分通道到List
+        // ================= 核心修复算法开始 =================
 
-        Imgproc.equalizeHist(channels.get(0), channels.get(0)); // 对亮度通道（Y通道）做直方图均衡化
-        Core.merge(channels, ycrcb); // 合并通道
+        // 步骤 2.1: 简易白平衡 (Gray World Algorithm) - 去除蓝绿色偏
+        // 计算三个通道的平均值
+        List<Mat> bgrChannels = new ArrayList<>();
+        Core.split(src, bgrChannels);
+        double bMean = Core.mean(bgrChannels.get(0)).val[0];
+        double gMean = Core.mean(bgrChannels.get(1)).val[0];
+        double rMean = Core.mean(bgrChannels.get(2)).val[0];
 
-        Imgproc.cvtColor(ycrcb, dst, Imgproc.COLOR_YCrCb2BGR); // 转回BGR颜色空间
-        // 2.3 形态学操作锐化
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(3, 3));
-        Imgproc.erode(dst, dst, kernel);
-        Imgproc.dilate(dst, dst, kernel);
+        // 计算全局平均灰度
+        double k = (bMean + gMean + rMean) / 3.0;
 
-        // 3. 保存修复后图片
+        // 计算各通道增益系数
+        double kb = k / bMean;
+        double kg = k / gMean;
+        double kr = k / rMean;
+
+        // 应用增益（限制在0-255范围内）
+        Core.multiply(bgrChannels.get(0), new Scalar(kb), bgrChannels.get(0));
+        Core.multiply(bgrChannels.get(1), new Scalar(kg), bgrChannels.get(1));
+        Core.multiply(bgrChannels.get(2), new Scalar(kr), bgrChannels.get(2));
+
+        Mat balanced = new Mat();
+        Core.merge(bgrChannels, balanced);
+
+        // 步骤 2.2: 转换到 LAB 颜色空间应用 CLAHE - 增强对比度并去雾
+        Mat lab = new Mat();
+        Imgproc.cvtColor(balanced, lab, Imgproc.COLOR_BGR2Lab);
+
+        List<Mat> labChannels = new ArrayList<>();
+        Core.split(lab, labChannels);
+
+        // 创建 CLAHE 对象 (ClipLimit: 限制对比度阈值, TileGridSize: 局部块大小)
+        // 2.0 和 (8,8) 是常用经验值，如果觉得不够清晰可以调大 ClipLimit 到 3.0 或 4.0
+        CLAHE clahe = Imgproc.createCLAHE(2.0, new Size(8, 8));
+
+        // 只对 L 通道（亮度）进行均衡化，这样不会破坏颜色
+        Mat dstL = new Mat();
+        clahe.apply(labChannels.get(0), dstL);
+        dstL.copyTo(labChannels.get(0));
+
+        // 合并通道并转回 BGR
+        Core.merge(labChannels, lab);
+        Imgproc.cvtColor(lab, dst, Imgproc.COLOR_Lab2BGR);
+
+        // 步骤 2.3: 轻微锐化 (可选，增强细节)
+        Mat kernel = new Mat(3, 3, org.opencv.core.CvType.CV_32F);
+        // 经典的锐化卷积核
+        float[] kernelData = {
+                0, -1, 0,
+                -1, 5, -1,
+                0, -1, 0
+        };
+        kernel.put(0, 0, kernelData);
+        Imgproc.filter2D(dst, dst, -1, kernel);
+
+        // 释放内存
+        balanced.release();
+        lab.release();
+        dstL.release();
+        kernel.release();
+        for(Mat m : bgrChannels) m.release();
+        for(Mat m : labChannels) m.release();
+
+        // ================= 核心修复算法结束 =================
+
+        // 3. 保存修复后图片 (使用之前的安全路径逻辑)
         String originalPath = record.getOriginalFilePath();
-        String restoredPath = originalPath.replace(".", "_restored.");
+        int lastDotIndex = originalPath.lastIndexOf(".");
+        String restoredPath = originalPath.substring(0, lastDotIndex) + "_restored" + originalPath.substring(lastDotIndex);
+
         Imgcodecs.imwrite(restoredPath, dst);
 
         // 4. 更新数据库记录
-        String restoredUrl = record.getOriginalFileUrl().replace(".", "_restored.");
+        String originalUrl = record.getOriginalFileUrl();
+        int lastUrlDotIndex = originalUrl.lastIndexOf(".");
+        String restoredUrl = originalUrl.substring(0, lastUrlDotIndex) + "_restored" + originalUrl.substring(lastUrlDotIndex);
+
         record.setRestoredFilePath(restoredPath);
         record.setRestoredFileUrl(restoredUrl);
         recordMapper.updateById(record);
+
+        // 释放源图像
+        src.release();
+        dst.release();
 
         return record;
     }
