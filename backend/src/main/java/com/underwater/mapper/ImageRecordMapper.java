@@ -2,15 +2,22 @@ package com.underwater.mapper;
 
 import com.underwater.entity.ImageRecord;
 import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
 public interface ImageRecordMapper {
-    // 新增图片记录
-    @Insert("insert into image_restoration_record (user_id, original_filename, original_file_path, original_file_url, file_size, restoration_time) " +
-            "values (#{userId}, #{originalFilename}, #{originalFilePath}, #{originalFileUrl}, #{fileSize}, now())")
+    // 新增图片记录 - 添加主键回填
+    @Insert("insert into image_restoration_record (" +
+            "user_id, original_filename, original_file_path, original_file_url, " +
+            "file_size, restoration_time, restored_file_path, restored_file_url" +
+            ") values (" +
+            "#{userId}, #{originalFilename}, #{originalFilePath}, #{originalFileUrl}, " +
+            "#{fileSize}, now(), null, null" +
+            ")")
+    @Options(useGeneratedKeys = true, keyProperty = "id", keyColumn = "id")
     int insert(ImageRecord record);
 
     // 根据ID查询记录
