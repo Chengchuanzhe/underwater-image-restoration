@@ -1,106 +1,201 @@
 <template>
-  <el-container style="height: 100vh">
-    <!-- 顶部导航 -->
-    <el-header style="text-align: right; font-size: 12px">
-      <el-dropdown>
-        <i class="el-icon-setting" style="margin-right: 15px"></i>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item @click="$router.push('/restoration')">返回修复页</el-dropdown-item>
-            <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <span>{{ userInfo.username }}</span>
-    </el-header>
+  <div class="profile-container">
+    <div class="nav-header">
+      <div class="logo" @click="$router.push('/restoration')" style="cursor: pointer">
+        🌊 水下图像修复
+      </div>
+      <div class="user-info">
+        <el-button type="text" style="color: white" @click="$router.push('/restoration')">
+          <i class="el-icon-back"></i> 返回修复台
+        </el-button>
+      </div>
+    </div>
 
-    <!-- 主体内容 -->
-    <el-main>
-      <el-card title="个人信息">
-        <el-form :model="userInfo" label-width="80px">
-          <el-form-item label="用户名">
-            <el-input v-model="userInfo.username" disabled></el-input>
-          </el-form-item>
-          <el-form-item label="邮箱">
-            <el-input v-model="userInfo.email" disabled></el-input>
-          </el-form-item>
-        </el-form>
-      </el-card>
+    <div class="main-content">
+      <el-row :gutter="20" style="width: 100%; max-width: 1200px;">
+        <el-col :span="6">
+          <el-card class="user-card">
+            <div class="avatar-wrapper">
+              <el-avatar :size="80" icon="el-icon-user-solid" class="big-avatar"></el-avatar>
+            </div>
+            <h3 class="username">{{ userInfo.username }}</h3>
+            <p class="role">普通用户</p>
+            <div class="stats">
+              <div class="stat-item">
+                <span class="count">{{ records.length }}</span>
+                <span class="label">修复次数</span>
+              </div>
+            </div>
+            <el-divider></el-divider>
+            <el-button type="danger" plain style="width: 100%" @click="logout">退出登录</el-button>
+          </el-card>
+        </el-col>
 
-      <el-card title="修复记录" style="margin-top: 20px">
-        <el-table :data="records" border>
-          <el-table-column prop="originalFilename" label="文件名"></el-table-column>
-          <el-table-column prop="fileSize" label="文件大小(KB)">
-            <template #default="scope">
-              {{ (scope.row.fileSize / 1024).toFixed(2) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="restorationTime" label="修复时间"></el-table-column>
-          <el-table-column label="操作">
-            <template #default="scope">
-              <el-button type="primary" size="small" @click="previewRecord(scope.row)">预览</el-button>
-              <el-button type="success" size="small" @click="downloadImage(scope.row.restoredFileUrl)">导出</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-    </el-main>
-  </el-container>
+        <el-col :span="18">
+          <el-card class="history-card">
+            <div slot="header" class="clearfix">
+              <span style="font-weight: bold; font-size: 16px">🖼️ 历史修复记录</span>
+            </div>
+
+            <el-table :data="records" style="width: 100%" v-loading="loading">
+              <el-table-column prop="id" label="ID" width="60"></el-table-column>
+
+              <el-table-column label="原图预览" width="120">
+                <template #default="scope">
+                  <el-image
+                    style="width: 50px; height: 50px; border-radius: 4px"
+                    :src="scope.row.originalFileUrl"
+                    :preview-src-list="[scope.row.originalFileUrl]"
+                  ></el-image>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="修复后预览" width="120">
+                <template #default="scope">
+                  <el-image
+                    v-if="scope.row.restoredFileUrl"
+                    style="width: 50px; height: 50px; border-radius: 4px"
+                    :src="scope.row.restoredFileUrl"
+                    :preview-src-list="[scope.row.restoredFileUrl]"
+                  ></el-image>
+                  <span v-else class="text-gray">未修复</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column prop="originalFilename" label="文件名" show-overflow-tooltip></el-table-column>
+
+              <el-table-column label="操作" width="150" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    v-if="scope.row.restoredFileUrl"
+                    size="mini"
+                    type="primary"
+                    icon="el-icon-download"
+                    @click="downloadImage(scope.row.restoredFileUrl)"
+                  >
+                    下载
+                  </el-button>
+                  <el-tag v-else type="info" size="mini">处理中</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </el-col>
+      </el-row>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElDialog, ElImage } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { getImageRecords, downloadImage } from '@/api/image'
+import { ElMessage } from 'element-plus'
+import { getImageRecords, downloadImage as downloadApi } from '@/api/image'
 
 const router = useRouter()
 const userInfo = ref(JSON.parse(localStorage.getItem('user') || '{}'))
 const records = ref([])
-const dialogVisible = ref(false)
-const previewImage = ref({
-  original: '',
-  restored: ''
-})
+const loading = ref(false)
 
-// 获取修复记录
-onMounted(async () => {
+// 获取历史记录
+const fetchRecords = async () => {
+  loading.value = true
   try {
     const res = await getImageRecords()
-    records.value = res.data
+    // 假设后端返回 Result<List<ImageRecord>>，数据在 res.data.data 或 res.data 里
+    records.value = res.data.data || res.data || []
   } catch (error) {
-    ElMessage.error('获取记录失败')
-    console.error('获取记录失败：', error)
+    console.error('获取记录失败', error)
+    // 如果是 401，可能是 token 过期
+    // ElMessage.warning('请先登录')
+  } finally {
+    loading.value = false
   }
-})
-
-// 预览记录
-const previewRecord = (row) => {
-  previewImage.value = {
-    original: row.originalFileUrl,
-    restored: row.restoredFileUrl
-  }
-  dialogVisible.value = true
 }
 
-// 退出登录
+const downloadImage = (url) => {
+  downloadApi(url, `history_${Date.now()}.png`)
+}
+
 const logout = () => {
   localStorage.removeItem('token')
   localStorage.removeItem('user')
-  ElMessage.success('退出成功')
   router.push('/login')
+  ElMessage.success('退出成功')
 }
+
+onMounted(() => {
+  fetchRecords()
+})
 </script>
 
 <style scoped>
-.el-header {
-  background-color: #fff;
-  color: #333;
-  line-height: 60px;
-  border-bottom: 1px solid #e6e6e6;
+.profile-container {
+  min-height: 100vh;
+  background-color: #f0f2f5;
+  display: flex;
+  flex-direction: column;
 }
-.el-main {
-  padding: 20px;
-  background: #f5f5f5;
+
+.nav-header {
+  height: 60px;
+  background: #203a43;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 40px;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.user-card {
+  text-align: center;
+  padding: 20px 0;
+}
+.big-avatar {
+  background: #409EFF;
+  font-size: 40px;
+}
+.username {
+  margin: 15px 0 5px;
+  color: #303133;
+}
+.role {
+  color: #909399;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+.stats {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 30px;
+}
+.stat-item {
+  text-align: center;
+}
+.count {
+  display: block;
+  font-size: 24px;
+  font-weight: bold;
+  color: #303133;
+}
+.label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.history-card {
+  min-height: 500px;
+}
+.text-gray {
+  color: #ccc;
+  font-size: 12px;
 }
 </style>
