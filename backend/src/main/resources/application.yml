@@ -52,5 +52,5 @@ custom:
     length: 6
   # 图片存储
   image:
-    upload-path: ./uploads/
+    upload-path: D:/class_project/underwater_picture/underwater-image-restoration/backend/uploads
     base-url: http://localhost:8080/uploads/
